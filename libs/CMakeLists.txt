@@ -12,13 +12,17 @@ block()
     include(FetchContent)
     set(FETCHCONTENT_FULLY_DISCONNECTED ON)
 
-    option(FMT_INSTALL OFF)
-    FetchContent_Declare(
-        fmt
-        EXCLUDE_FROM_ALL
-        SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fmt
-    )
-    FetchContent_MakeAvailable(fmt)
+    if (NOT TARGET fmt::fmt)
+        option(FMT_INSTALL OFF)
+        FetchContent_Declare(
+            fmt
+            EXCLUDE_FROM_ALL
+            SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fmt
+        )
+        FetchContent_MakeAvailable(fmt)
+    else()
+        message(STATUS "Using existing fmt::fmt target")
+    endif()
 
     FetchContent_Declare(
         tomlplusplus

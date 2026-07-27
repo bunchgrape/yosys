@@ -1,4 +1,7 @@
-if (CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
+set(YOSYS_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
+set(YOSYS_BINARY_DIR "${CMAKE_CURRENT_BINARY_DIR}")
+
+if (YOSYS_BINARY_DIR STREQUAL YOSYS_SOURCE_DIR)
 	set(rm "rm -rf")
 	if (WIN32)
 		set(rm "del /s /q")
@@ -12,7 +15,7 @@ endif()
 cmake_minimum_required(VERSION 3.28)
 project(yosys LANGUAGES C CXX)
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+set(CMAKE_MODULE_PATH "${YOSYS_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
 include(CMakeDependentOption)
 include(FeatureSummary)
 include(CheckPIESupported)
@@ -374,8 +377,8 @@ target_compile_definitions(yosys_common INTERFACE
 	$<$<CONFIG:Debug,RelWithDebInfo>:DEBUG>
 )
 target_include_directories(yosys_common INTERFACE
-	${CMAKE_SOURCE_DIR}
-	${CMAKE_BINARY_DIR}
+	${YOSYS_SOURCE_DIR}
+	${YOSYS_BINARY_DIR}
 )
 if (SANITIZE)
 	target_compile_options(yosys_common INTERFACE
@@ -431,7 +434,7 @@ if (NOT YOSYS_BUILD_PYTHON_ONLY)
 			IMPORT_SUFFIX ".exe.a"
 		)
 		if (YOSYS_INSTALL_DRIVER)
-			install(FILES ${CMAKE_BINARY_DIR}/yosys.exe.a DESTINATION ${YOSYS_INSTALL_LIBDIR})
+			install(FILES ${YOSYS_BINARY_DIR}/yosys.exe.a DESTINATION ${YOSYS_INSTALL_LIBDIR})
 		endif()
 	endif()
 
@@ -509,14 +512,14 @@ endif()
 # (The use of `${makefile_vars}` in `add_custom_{target,command}()` adds dependencies for
 # all of the targets specified via `$<TARGET_FILE:tgt>`.)
 set(makefile_vars
-	BUILD_DIR=${CMAKE_BINARY_DIR}
+	BUILD_DIR=${YOSYS_BINARY_DIR}
 	PROGRAM_PREFIX=${YOSYS_PROGRAM_PREFIX}
 	ABC=$<IF:$<TARGET_EXISTS:yosys-abc>,$<TARGET_FILE:yosys-abc>,${YOSYS_ABC_EXECUTABLE}>
 	YOSYS=$<TARGET_FILE:yosys>
-	YOSYS_CONFIG=${CMAKE_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-config
+	YOSYS_CONFIG=${YOSYS_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-config
 	YOSYS_FILTERLIB=$<$<TARGET_EXISTS:yosys-filterlib>:$<TARGET_FILE:yosys-filterlib>>
-	YOSYS_SMTBMC=${CMAKE_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-smtbmc
-	YOSYS_WITNESS=${CMAKE_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-witness
+	YOSYS_SMTBMC=${YOSYS_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-smtbmc
+	YOSYS_WITNESS=${YOSYS_BINARY_DIR}/${YOSYS_PROGRAM_PREFIX}yosys-witness
 )
 set(makefile_depends
 	# abc is implied via $<TARGET_FILE>
@@ -532,13 +535,13 @@ if (NOT YOSYS_BUILD_PYTHON_ONLY)
 
 	add_custom_target(test-unit
 		COMMAND ${CMAKE_CTEST_COMMAND} --test-dir tests/unit --output-on-failure
-		WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
+		WORKING_DIRECTORY ${YOSYS_BINARY_DIR}
 	)
 
 	add_custom_target(test-vanilla
 		COMMAND make vanilla-test ${makefile_vars}
 			ENABLE_FUNCTIONAL_TESTS=$<IF:$<BOOL:${YOSYS_ENABLE_FUNCTIONAL_TESTS}>,1,0>
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests
+		WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}/tests
 		DEPENDS ${makefile_depends}
 		USES_TERMINAL
 		JOB_SERVER_AWARE TRUE
@@ -547,7 +550,7 @@ if (NOT YOSYS_BUILD_PYTHON_ONLY)
 	add_custom_target(test-functional
 		COMMAND make functional ${makefile_vars}
 			ENABLE_FUNCTIONAL_TESTS=$<IF:$<BOOL:${YOSYS_ENABLE_FUNCTIONAL_TESTS}>,1,0>
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/tests
+		WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}/tests
 		DEPENDS ${makefile_depends}
 		USES_TERMINAL
 		JOB_SERVER_AWARE TRUE
@@ -560,20 +563,20 @@ if (NOT YOSYS_BUILD_PYTHON_ONLY)
 	# Docs.
 	add_custom_target(docs-prepare
 		COMMAND make gen ${makefile_vars}
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/docs
+		WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}/docs
 		DEPENDS ${makefile_depends}
 		JOB_SERVER_AWARE TRUE
 	)
 	foreach (format html latexpdf)
 		add_custom_target(docs-${format}
 			COMMAND make ${format}
-			WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/docs
+			WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}/docs
 			DEPENDS docs-prepare
 		)
 	endforeach()
 	add_custom_target(test-docs
 		COMMAND make test ${makefile_vars}
-		WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/docs
+		WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}/docs
 		DEPENDS ${makefile_depends}
 		JOB_SERVER_AWARE TRUE
 	)
@@ -596,9 +599,9 @@ math(EXPR YOSYS_VERSION_MINOR_next "${YOSYS_VERSION_MINOR} + 1")
 add_custom_target(increment-minor-version
 	COMMAND ${CMAKE_COMMAND} -E echo
 		"set(YOSYS_VERSION_MAJOR ${YOSYS_VERSION_MAJOR})"
-		> ${CMAKE_SOURCE_DIR}/cmake/YosysVersionData.cmake
+		> ${YOSYS_SOURCE_DIR}/cmake/YosysVersionData.cmake
 	COMMAND ${CMAKE_COMMAND} -E echo
 		"set(YOSYS_VERSION_MINOR ${YOSYS_VERSION_MINOR_next})"
-		>> ${CMAKE_SOURCE_DIR}/cmake/YosysVersionData.cmake
+		>> ${YOSYS_SOURCE_DIR}/cmake/YosysVersionData.cmake
 	VERBATIM
 )
