@@ -749,10 +749,17 @@ struct LibertyFrontend : public Frontend {
 						wire->port_output = true;
 					}
 
-					if (flag_lib)
-						continue;
-
 					const LibertyAst *func = node->find("function");
+					const LibertyAst *three_state = node->find("three_state");
+
+					if (flag_lib) {
+						if (func)
+							wire->attributes[ID(liberty_function)] = func->value;
+						if (three_state)
+							wire->attributes[ID(liberty_three_state)] = three_state->value;
+						continue;
+					}
+
 					if (func == NULL)
 					{
 						if (dir->value != "inout") { // allow inout with missing function, can be used for power pins

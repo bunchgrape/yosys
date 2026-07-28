@@ -26,6 +26,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <ctype.h>
 
 #include "simplemap.h"
 
@@ -69,6 +70,10 @@ struct TechmapWorker
 	dict<Module*, SigMap> sigmaps;
 
 	pool<string> log_msg_cache;
+	IdString liberty_inv_cell, liberty_inv_in_port, liberty_inv_out_port;
+	IdString liberty_tbuf_cell, liberty_tbuf_in_port, liberty_tbuf_en_port, liberty_tbuf_out_port;
+	bool liberty_tbuf_en_positive = false;
+	pool<IdString> dont_map_celltypes;
 
 	struct TechmapWireData {
 		RTLIL::Wire *wire;
@@ -76,6 +81,12 @@ struct TechmapWorker
 	};
 
 	typedef dict<IdString, std::vector<TechmapWireData>> TechmapWires;
+
+	struct LibertyTbufMatch {
+		IdString cell_type, data_pin, tristate_pin, output_pin;
+		bool tristate_positive;
+		double area;
+	};
 
 	bool extern_mode = false;
 	bool assert_mode = false;
@@ -139,6 +150,250 @@ struct TechmapWorker
 		}
 
 		return result;
+	}
+
+	static std::string strip_liberty_expr(std::string expr)
+	{
+		std::string stripped;
+		for (char ch : expr)
+			if (!isspace((unsigned char)ch))
+				stripped += ch;
+
+		bool changed = true;
+		while (changed && stripped.size() >= 2 && stripped.front() == '(' && stripped.back() == ')') {
+			changed = false;
+			int depth = 0;
+			bool wraps = true;
+			for (size_t i = 0; i < stripped.size(); i++) {
+				if (stripped[i] == '(')
+					depth++;
+				if (stripped[i] == ')')
+					depth--;
+				if (depth == 0 && i + 1 != stripped.size()) {
+					wraps = false;
+					break;
+				}
+			}
+			if (wraps) {
+				stripped = stripped.substr(1, stripped.size() - 2);
+				changed = true;
+			}
+		}
+
+		return stripped;
+	}
+
+	static bool parse_unary_pin_expr(const std::string &expr, IdString &pin, bool &positive)
+	{
+		std::string stripped = strip_liberty_expr(expr);
+
+		positive = true;
+		if (!stripped.empty() && stripped[0] == '!') {
+			positive = false;
+			stripped = strip_liberty_expr(stripped.substr(1));
+		}
+
+		if (stripped.empty())
+			return false;
+
+		for (char ch : stripped)
+			if (!(isalnum((unsigned char)ch) || ch == '_' || ch == '[' || ch == ']' || ch == '.'))
+				return false;
+
+		pin = RTLIL::escape_id(stripped);
+		return true;
+	}
+
+	bool find_liberty_inverter(RTLIL::Design *design)
+	{
+		if (!liberty_inv_cell.empty())
+			return true;
+
+		double best_area = 1e100;
+
+		for (auto inv_mod : design->modules()) {
+			if (!inv_mod->get_blackbox_attribute())
+				continue;
+
+			for (auto out_wire : inv_mod->wires()) {
+				if (!out_wire->port_output || out_wire->port_input)
+					continue;
+				if (!out_wire->attributes.count(ID(liberty_function)))
+					continue;
+				if (out_wire->attributes.count(ID(liberty_three_state)))
+					continue;
+
+				IdString in_port;
+				bool positive;
+				if (!parse_unary_pin_expr(out_wire->attributes.at(ID(liberty_function)).decode_string(), in_port, positive))
+					continue;
+				if (positive)
+					continue;
+
+				Wire *in_wire = inv_mod->wire(in_port);
+				if (in_wire == nullptr || !in_wire->port_input || in_wire->port_output)
+					continue;
+
+				double area = 0.0;
+				if (inv_mod->attributes.count(ID::area))
+					area = atof(inv_mod->attributes.at(ID::area).decode_string().c_str());
+
+				if (liberty_inv_cell.empty() || area < best_area) {
+					best_area = area;
+					liberty_inv_cell = inv_mod->name;
+					liberty_inv_in_port = in_port;
+					liberty_inv_out_port = out_wire->name;
+				}
+			}
+		}
+
+		return !liberty_inv_cell.empty();
+	}
+
+	bool find_liberty_tbuf_match(RTLIL::Module *cell_mod, LibertyTbufMatch &match)
+	{
+		if (!cell_mod->get_blackbox_attribute())
+			return false;
+
+		for (auto out_wire : cell_mod->wires()) {
+			if (!out_wire->port_output || out_wire->port_input)
+				continue;
+			if (!out_wire->attributes.count(ID(liberty_function)) || !out_wire->attributes.count(ID(liberty_three_state)))
+				continue;
+
+			IdString data_pin, tristate_pin;
+			bool data_positive, tristate_positive;
+			if (!parse_unary_pin_expr(out_wire->attributes.at(ID(liberty_function)).decode_string(), data_pin, data_positive))
+				continue;
+			if (!parse_unary_pin_expr(out_wire->attributes.at(ID(liberty_three_state)).decode_string(), tristate_pin, tristate_positive))
+				continue;
+			if (!data_positive)
+				continue;
+
+			Wire *data_wire = cell_mod->wire(data_pin);
+			Wire *tristate_wire = cell_mod->wire(tristate_pin);
+			if (data_wire == nullptr || !data_wire->port_input || data_wire->port_output)
+				continue;
+			if (tristate_wire == nullptr || !tristate_wire->port_input || tristate_wire->port_output)
+				continue;
+
+			match.cell_type = cell_mod->name;
+			match.data_pin = data_pin;
+			match.tristate_pin = tristate_pin;
+			match.output_pin = out_wire->name;
+			match.tristate_positive = tristate_positive;
+			match.area = 0.0;
+			if (cell_mod->attributes.count(ID::area))
+				match.area = atof(cell_mod->attributes.at(ID::area).decode_string().c_str());
+			return true;
+		}
+
+		return false;
+	}
+
+	bool find_liberty_tbuf(RTLIL::Design *design)
+	{
+		if (!liberty_tbuf_cell.empty())
+			return true;
+
+		LibertyTbufMatch best;
+		bool found = false;
+
+		for (auto cell_mod : design->modules()) {
+			LibertyTbufMatch match;
+			if (!find_liberty_tbuf_match(cell_mod, match))
+				continue;
+
+			if (!found || match.area < best.area || (match.area == best.area && match.cell_type < best.cell_type)) {
+				best = match;
+				found = true;
+			}
+		}
+
+		if (!found)
+			return false;
+
+		liberty_tbuf_cell = best.cell_type;
+		liberty_tbuf_in_port = best.data_pin;
+		liberty_tbuf_en_port = best.tristate_pin;
+		liberty_tbuf_out_port = best.output_pin;
+		liberty_tbuf_en_positive = best.tristate_positive;
+		return true;
+	}
+
+	void connect_liberty_tbuf_enable(RTLIL::Design *design, RTLIL::Module *module, RTLIL::Cell *orig_cell,
+			RTLIL::Cell *mapped_cell, IdString tristate_pin, bool tristate_positive)
+	{
+		SigSpec orig_en = orig_cell->getPort(ID::E);
+		log_assert(GetSize(orig_en) == 1);
+
+		if (tristate_positive) {
+			if (!find_liberty_inverter(design))
+				log_error("Cannot map %s to liberty tristate cell %s: no liberty inverter cell is available for active-low drive enable.\n",
+						orig_cell->type.unescape(), mapped_cell->type.unescape());
+
+			SigBit inv_out = module->addWire(NEW_ID);
+			Cell *inv = module->addCell(NEW_ID, liberty_inv_cell);
+			inv->setPort(liberty_inv_in_port, orig_en);
+			inv->setPort(liberty_inv_out_port, inv_out);
+			mapped_cell->setPort(tristate_pin, inv_out);
+		} else {
+			mapped_cell->setPort(tristate_pin, orig_en);
+		}
+	}
+
+	bool map_liberty_tbuf(RTLIL::Design *design, RTLIL::Module *module, RTLIL::Cell *cell)
+	{
+		if (cell->type != ID($_TBUF_))
+			return false;
+		if (!find_liberty_tbuf(design))
+			return false;
+
+		std::string orig_cell_name = cell->name.str();
+		module->rename(cell, stringf("$techmap%d", autoidx++) + cell->name.str());
+
+		RTLIL::Cell *mapped_cell = module->addCell(orig_cell_name, liberty_tbuf_cell);
+		mapped_cell->setPort(liberty_tbuf_in_port, cell->getPort(ID::A));
+		connect_liberty_tbuf_enable(design, module, cell, mapped_cell, liberty_tbuf_en_port, liberty_tbuf_en_positive);
+		mapped_cell->setPort(liberty_tbuf_out_port, cell->getPort(ID::Y));
+
+		for (auto attr : cell->attributes)
+			if (!mapped_cell->attributes.count(attr.first))
+				mapped_cell->attributes[attr.first] = attr.second;
+		mapped_cell->attributes.erase(ID::reprocess_after);
+
+		auto msg = stringf("Using liberty tristate cell %s for cells of type %s.", liberty_tbuf_cell.unescape(), cell->type.unescape());
+		if (!log_msg_cache.count(msg)) {
+			log_msg_cache.insert(msg);
+			log("%s\n", msg);
+		}
+		log_debug("Mapped %s.%s (%s) to liberty tristate cell %s.\n",
+				module, mapped_cell, cell->type.unescape(), liberty_tbuf_cell.unescape());
+
+		module->remove(cell);
+		return true;
+	}
+
+	void fix_liberty_tbuf_polarity(RTLIL::Design *design, RTLIL::Module *module, RTLIL::Cell *orig_cell, RTLIL::Cell *mapped_cell)
+	{
+		if (orig_cell->type != ID($_TBUF_))
+			return;
+
+		Module *cell_mod = design->module(mapped_cell->type);
+		if (cell_mod == nullptr)
+			return;
+
+		LibertyTbufMatch match;
+		if (!find_liberty_tbuf_match(cell_mod, match))
+			return;
+		if (!mapped_cell->hasPort(match.data_pin) || !mapped_cell->hasPort(match.tristate_pin) || !mapped_cell->hasPort(match.output_pin))
+			return;
+
+		connect_liberty_tbuf_enable(design, module, orig_cell, mapped_cell, match.tristate_pin, match.tristate_positive);
+
+		log_debug("Adjusted liberty tristate control %s.%s for %s using three_state expression `%s'.\n",
+				mapped_cell->type.unescape(), match.tristate_pin.unescape(), orig_cell->type.unescape(),
+				cell_mod->wire(match.output_pin)->attributes.at(ID(liberty_three_state)).decode_string().c_str());
 	}
 
 	void techmap_module_worker(RTLIL::Design *design, RTLIL::Module *module, RTLIL::Cell *cell, RTLIL::Module *tpl)
@@ -363,6 +618,8 @@ struct TechmapWorker
 				}
 			}
 
+			fix_liberty_tbuf_polarity(design, module, cell, c);
+
 			for (auto &it2 : autopurge_ports)
 				c->unsetPort(it2);
 
@@ -434,6 +691,10 @@ struct TechmapWorker
 				continue;
 
 			if (celltypeMap.count(cell->type) == 0) {
+				if (!dont_map_celltypes.count(cell->type) && map_liberty_tbuf(design, module, cell)) {
+					did_something = true;
+					continue;
+				}
 				if (assert_mode && !cell->type.ends_with("_"))
 					log_error("(ASSERT MODE) No matching template cell for type %s found.\n", cell->type.unescape());
 				continue;
@@ -977,6 +1238,10 @@ struct TechmapPass : public Pass {
 		log("        without this parameter a builtin library is used that\n");
 		log("        transforms the internal RTL cells to the internal gate\n");
 		log("        library.\n");
+		log("        When Liberty cells have been loaded with read_liberty -lib,\n");
+		log("        internal $_TBUF_ cells can also be mapped directly to a\n");
+		log("        matching Liberty tristate cell using function and three_state\n");
+		log("        metadata.\n");
 		log("\n");
 		log("    -map %%<design-name>\n");
 		log("        like -map above, but with an in-memory design instead of a file.\n");
@@ -1257,8 +1522,10 @@ struct TechmapPass : public Pass {
 		}
 
 		// Erase any rules disabled with a -dont_map argument
-		for (auto type : dont_map)
+		for (auto type : dont_map) {
 			celltypeMap.erase(type);
+			worker.dont_map_celltypes.insert(type);
+		}
 
 		log_debug("Cell type mappings to use:\n");
 		for (auto &i : celltypeMap) {
