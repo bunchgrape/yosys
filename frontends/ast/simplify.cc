@@ -5490,6 +5490,11 @@ bool AstNode::mem2reg_as_needed_pass2(pool<AstNode*> &mem2reg_set, AstNode *mod,
 		bool mem_signed = children[0]->id2ast->is_signed;
 		children[0]->id2ast->meminfo(mem_width, mem_size, addr_bits);
 
+		int addr_width_hint = -1;
+		bool addr_sign_hint = true;
+		children[0]->children[0]->children[0]->detectSignWidthWorker(addr_width_hint, addr_sign_hint);
+		addr_bits = std::max(addr_bits, addr_width_hint);
+
 		auto wire_addr = std::make_unique<AstNode>(location, AST_WIRE, std::make_unique<AstNode>(location, AST_RANGE, mkconst_int(location, addr_bits-1, true), mkconst_int(location, 0, true)));
 		wire_addr->str = id_addr;
 		wire_addr->is_reg = true;
@@ -5608,6 +5613,11 @@ bool AstNode::mem2reg_as_needed_pass2(pool<AstNode*> &mem2reg_set, AstNode *mod,
 			int mem_width, mem_size, addr_bits;
 			bool mem_signed = id2ast->is_signed;
 			id2ast->meminfo(mem_width, mem_size, addr_bits);
+
+			int addr_width_hint = -1;
+			bool addr_sign_hint = true;
+			children[0]->children[0]->detectSignWidthWorker(addr_width_hint, addr_sign_hint);
+			addr_bits = std::max(addr_bits, addr_width_hint);
 
 			auto wire_addr = std::make_unique<AstNode>(location, AST_WIRE, std::make_unique<AstNode>(location, AST_RANGE, mkconst_int(location, addr_bits-1, true), mkconst_int(location, 0, true)));
 			wire_addr->str = id_addr;
