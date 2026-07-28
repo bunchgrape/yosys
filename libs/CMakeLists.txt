@@ -18,7 +18,14 @@ block()
     include(FetchContent)
     set(FETCHCONTENT_FULLY_DISCONNECTED ON)
 
-    if (NOT TARGET fmt::fmt)
+    if(TARGET fmt::fmt)
+        set(fmt_FOUND TRUE)
+    elseif(NOT YOSYS_USE_BUNDLED_LIBS)
+        find_package(fmt 12.2 QUIET)
+    endif()
+    if(fmt_FOUND)
+        set(SLANG_USE_SYSTEM_FMT ON)
+    else()
         option(FMT_INSTALL OFF)
         FetchContent_Declare(
             fmt
@@ -26,8 +33,6 @@ block()
             SOURCE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/fmt
         )
         FetchContent_MakeAvailable(fmt)
-    else()
-        message(STATUS "Using existing fmt::fmt target")
     endif()
 
     if(NOT YOSYS_USE_BUNDLED_LIBS)

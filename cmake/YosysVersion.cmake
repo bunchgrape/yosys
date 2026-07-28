@@ -9,6 +9,9 @@
 #  - `git_output`: standard output (standard error is discarded)
 #
 function(yosys_call_git)
+	if (NOT YOSYS_SOURCE_DIR)
+		set(YOSYS_SOURCE_DIR ${CMAKE_SOURCE_DIR})
+	endif()
 	execute_process(
 		COMMAND ${GIT_EXECUTABLE} ${ARGV}
 		WORKING_DIRECTORY ${YOSYS_SOURCE_DIR}
