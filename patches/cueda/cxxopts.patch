@@ -1,0 +1,13 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 4c1a686..8099c4d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -37,7 +37,7 @@ include(GNUInstallDirs)
+ 
+ # Determine whether this is a standalone project or included by other projects
+ set(CXXOPTS_STANDALONE_PROJECT OFF)
+-if (CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
++if (CMAKE_CURRENT_SOURCE_DIR STREQUAL YOSYS_SOURCE_DIR)
+     set(CXXOPTS_STANDALONE_PROJECT ON)
+ endif()
+ 

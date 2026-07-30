@@ -1,0 +1,85 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9dfe771..2b30913 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -1,4 +1,4 @@
+-if (CMAKE_BINARY_DIR STREQUAL CMAKE_SOURCE_DIR)
++if (YOSYS_BINARY_DIR STREQUAL YOSYS_SOURCE_DIR)
+     message(FATAL_ERROR "In-tree builds are not supported. Instead, run:\ncmake . -B build <options> && cmake --build build")
+ endif()
+ 
+@@ -11,7 +11,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
+ set(CMAKE_CXX_EXTENSIONS OFF)
+ 
+ project(sv-elab CXX)
+-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
++set(CMAKE_MODULE_PATH "${YOSYS_SOURCE_DIR}/cmake" ${CMAKE_MODULE_PATH})
+ 
+ option(BUILD_AS_PLUGIN "Build sv-elab as a Yosys plugin" ON)
+ mark_as_advanced(BUILD_AS_PLUGIN)
+@@ -59,7 +59,7 @@ else()
+     FetchContent_Declare(
+         fmt
+         EXCLUDE_FROM_ALL
+-        SOURCE_DIR ${CMAKE_SOURCE_DIR}/third_party/fmt
++        SOURCE_DIR ${YOSYS_SOURCE_DIR}/third_party/fmt
+     )
+     FetchContent_MakeAvailable(fmt)
+ endif()
+diff --git a/src/CMakeLists.txt b/src/CMakeLists.txt
+index bec166d..407e6f0 100644
+--- a/src/CMakeLists.txt
++++ b/src/CMakeLists.txt
+@@ -1,8 +1,8 @@
+ find_package(Yosys)
+ include(GitRevision)
+ 
+-git_rev_parse(YOSYS_SLANG_REVISION ${CMAKE_SOURCE_DIR})
+-git_rev_parse(SLANG_REVISION ${CMAKE_SOURCE_DIR}/third_party/slang)
++git_rev_parse(YOSYS_SLANG_REVISION ${YOSYS_SOURCE_DIR})
++git_rev_parse(SLANG_REVISION ${YOSYS_SOURCE_DIR}/third_party/slang)
+ configure_file(${CMAKE_CURRENT_SOURCE_DIR}/version.h.in ${CMAKE_CURRENT_BINARY_DIR}/version.h)
+ 
+ if (BUILD_AS_PLUGIN)
+@@ -47,8 +47,8 @@ target_compile_options(yosys-slang PRIVATE
+ 
+ if (BUILD_AS_PLUGIN)
+     set_target_properties(yosys-slang PROPERTIES
+-        RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
+-        LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
++        RUNTIME_OUTPUT_DIRECTORY ${YOSYS_BINARY_DIR}
++        LIBRARY_OUTPUT_DIRECTORY ${YOSYS_BINARY_DIR}
+         # Yosys assumes `.so` to be the suffix on all platforms, so the following is required to make
+         # `yosys -m slang` to work after installation on any platform.
+         PREFIX ""
+@@ -68,7 +68,7 @@ if (BUILD_AS_PLUGIN)
+     endif()
+ else()
+     set_target_properties(yosys-slang PROPERTIES
+-        ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}
++        ARCHIVE_OUTPUT_DIRECTORY ${YOSYS_BINARY_DIR}
+         STATIC_LIBRARY_OPTIONS "$<TARGET_OBJECTS:fmt::fmt>;$<TARGET_OBJECTS:slang::slang>"
+     )
+ endif()
+diff --git a/tests/CMakeLists.txt b/tests/CMakeLists.txt
+index 2333931..9f81642 100644
+--- a/tests/CMakeLists.txt
++++ b/tests/CMakeLists.txt
+@@ -2,7 +2,7 @@ if (WITH_COVERAGE)
+     if (CMAKE_CXX_COMPILER_ID STREQUAL Clang)
+         set(test_launcher
+             ${CMAKE_COMMAND} -E env
+-            LLVM_PROFILE_FILE=${CMAKE_BINARY_DIR}/yosys-slang.%p.profraw
++            LLVM_PROFILE_FILE=${YOSYS_BINARY_DIR}/yosys-slang.%p.profraw
+         )
+ 
+         add_custom_target(
+@@ -18,7 +18,7 @@ if (WITH_COVERAGE)
+                 --ignore-filename-regex=/third_party/
+                 --ignore-filename-regex=^/usr
+                 > yosys-slang.info
+-            WORKING_DIRECTORY ${CMAKE_BINARY_DIR}
++            WORKING_DIRECTORY ${YOSYS_BINARY_DIR}
+         )
+     endif()
+ endif()

@@ -1,0 +1,12 @@
+diff --git a/cmake/project-is-top-level.cmake b/cmake/project-is-top-level.cmake
+index 3435fc0..ac60cb3 100644
+--- a/cmake/project-is-top-level.cmake
++++ b/cmake/project-is-top-level.cmake
+@@ -1,6 +1,6 @@
+ # This variable is set by project() in CMake 3.21+
+ string(
+     COMPARE EQUAL
+-    "${CMAKE_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}"
++    "${YOSYS_SOURCE_DIR}" "${PROJECT_SOURCE_DIR}"
+     PROJECT_IS_TOP_LEVEL
+ )
