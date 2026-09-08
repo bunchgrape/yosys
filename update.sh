@@ -2,23 +2,38 @@
 
 set -euo pipefail
 
-apply_patch() {
-    local repository=$1
-    local patch=$2
+yosys_root="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
-    if git -C "${repository}" apply --check "${patch}" >/dev/null 2>&1; then
-        git -C "${repository}" apply "${patch}"
-        echo "Applied ${patch}"
-    elif git -C "${repository}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
-        echo "Already applied: ${patch}"
-    else
-        echo "Patch is neither applicable nor already applied: ${patch}" >&2
-        git -C "${repository}" apply --check "${patch}"
+apply_cueda_patch() {
+    local repository="$1"
+    local patch="$2"
+
+    if git -C "${repository}" apply --reverse --check "${patch}" >/dev/null 2>&1; then
+        echo "CUEDA patch already applied: ${patch##*/}"
+        return
     fi
+
+    if ! git -C "${repository}" apply --check "${patch}"; then
+        echo "CUEDA patch is incompatible with ${repository}" >&2
+        return 1
+    fi
+
+    git -C "${repository}" apply "${patch}"
+    echo "Applied CUEDA patch: ${patch##*/}"
 }
 
-apply_patch frontends/slang/lib ../../../patches/cueda/frontends-slang-lib.patch
-apply_patch libs/cxxopts ../../patches/cueda/cxxopts.patch
-apply_patch libs/fmt ../../patches/cueda/fmt.patch
-apply_patch libs/slang ../../patches/cueda/slang.patch
-apply_patch libs/tomlplusplus ../../patches/cueda/tomlplusplus.patch
+apply_cueda_patch \
+    "${yosys_root}/frontends/slang/lib" \
+    "${yosys_root}/patches/cueda/frontends-slang-lib.patch"
+apply_cueda_patch \
+    "${yosys_root}/libs/cxxopts" \
+    "${yosys_root}/patches/cueda/cxxopts.patch"
+apply_cueda_patch \
+    "${yosys_root}/libs/fmt" \
+    "${yosys_root}/patches/cueda/fmt.patch"
+apply_cueda_patch \
+    "${yosys_root}/libs/slang" \
+    "${yosys_root}/patches/cueda/slang.patch"
+apply_cueda_patch \
+    "${yosys_root}/libs/tomlplusplus" \
+    "${yosys_root}/patches/cueda/tomlplusplus.patch"
