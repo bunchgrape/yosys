@@ -23,6 +23,9 @@ apply_cueda_patch() {
 }
 
 apply_cueda_patch \
+    "${yosys_root}" \
+    "${yosys_root}/patches/cueda/yosys.patch"
+apply_cueda_patch \
     "${yosys_root}/frontends/slang/lib" \
     "${yosys_root}/patches/cueda/frontends-slang-lib.patch"
 apply_cueda_patch \
@@ -37,6 +40,3 @@ apply_cueda_patch \
 apply_cueda_patch \
     "${yosys_root}/libs/tomlplusplus" \
     "${yosys_root}/patches/cueda/tomlplusplus.patch"
-apply_cueda_patch \
-    "${yosys_root}/" \
-    "${yosys_root}/patches/cueda/fix_CMakeLists_test_name.txt"

@@ -1,0 +1,13 @@
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -531,7 +531,9 @@
+ 	$<$<TARGET_EXISTS:yosys-witness>:yosys-witness>
+ )
+ 
+-if (NOT YOSYS_BUILD_PYTHON_ONLY)
++# Tests/docs only when standalone: an embedding project that enables CTest
++# reserves the "test" target name.
++if (NOT YOSYS_BUILD_PYTHON_ONLY AND PROJECT_IS_TOP_LEVEL)
+ 	# Tests.
+ 	add_subdirectory(tests/unit)
+ 
